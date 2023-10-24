@@ -1,0 +1,152 @@
+Sub AttProc()
+
+Set myOlApp = CreateObject("Outlook.Application")
+Set myOlExp = myOlApp.ActiveExplorer
+Set myOlSel = myOlExp.Selection
+Set myFolder = myOlExp.CurrentFolder
+Dim myItem As Outlook.MailItem
+
+Set myItem = myOlSel.Item(1)
+Set fs = CreateObject("Scripting.FileSystemObject")
+
+r = 0 ' tracks how many attachments removed
+q = 0 ' tracks how many not removed
+strFolder = ""
+If MsgBox("Do you want to Save attachments (Click Yes)" & vbLf & "or simply Remove them? (Click No)", _
+    vbYesNo, "Attachment Processor") = vbYes Then
+    mySaveVar = 1
+    strFolder = InputBox("Where should we save attachments?", "Attachment Processor", "C:\OutlookAttachments\")
+    If Not fs.FolderExists(strFolder) Then
+        MsgBox "There is no " & strFolder & ". Creating it now."
+        fs.CreateFolder (strFolder)
+    End If
+End If
+  
+ict = myItem.Attachments.Count
+isize = myItem.Size
+isize = isize / 1000000
+  
+  If MsgBox(" Item " & myItem.Subject & vbLf & " has " & ict & " attachments" & " = " & CInt(isize) & " MB" _
+      & vbLf & "Press Yes to remove these attachments" & vbLf & "Press No to work on the whole folder", vbYesNo, _
+    "Attachment Processor") = vbYes Then
+  
+        Set myAttachments = myItem.Attachments
+        z = myAttachments.Count
+            If z > 0 Then
+              For h = 1 To z
+                Set myAtt = myAttachments.Item(1)
+ '               MsgBox Item.Subject & " " & myAtt.Type
+                Select Case myAtt.Type ' Save attachment before deleting from item.
+                    Case Is <= 4 'not an Outlook item olByReference(4), olByValue(1), or olEmbeddedItem(5).
+                        attpath = myAtt.PathName ' This is nothing MsgBox "Attachment Path " & attpath
+                        attname = myAtt.FileName ' Get the file name.
+                        strFile = strFolder & attname  ' Combine with the path to the Temp folder.
+                        If mySaveVar = 1 Then ' Save the attachment as a file.
+                            myAtt.SaveAsFile strFile
+                        End If
+                        myAttname = "Attachment Removed: " & strFile ' MsgBox myAttname
+                        myItem.Body = myAttname + vbLf + myItem.Body
+                        myAttachments.Remove (1)
+                        r = r + 1
+                        z = myAttachments.Count
+                    Case Else
+                        q = q + 1
+                End Select
+              Next h
+             myItem.Save
+            End If
+            GoTo PostDone
+  Else ' you want to work on whole folder reset vars
+    ict = 0
+    isize = 0
+  End If
+
+' work on entire folder
+' set counters for loops n debugs
+' add up the attachments and size
+' prompt to start working or bail out
+
+    myFname = myFolder.Name
+    For Each Item In myFolder.Items
+       Set myAttachments = Item.Attachments
+       ict = ict + myAttachments.Count
+       isize = isize + Item.Size
+    Next
+    
+    isize = isize / 1000000 ' convert kb to mb
+  
+  If MsgBox(myFname & " Folder has " & ict & " attachments" & vbLf & " totaling " & CInt(isize) & " MB" _
+  & vbLf & "Do you want to remove these attachments? ", vbYesNo, "Attachment Removal") = vbNo Then
+        Exit Sub
+  Else
+BeginWork:
+    If MsgBox("Do you want to KEEP inline images (bmps & jpegs)?", vbYesNo, "Attachment Removal") = vbNo Then
+        For Each Item In myFolder.Items
+            Set myAttachments = Item.Attachments
+            z = myAttachments.Count
+            If z > 0 Then
+              For h = 1 To z
+                Set myAtt = myAttachments.Item(1)
+ '               MsgBox Item.Subject & " " & myAtt.Type
+                Select Case myAtt.Type
+                    Case Is <= 4
+                        attpath = myAtt.PathName ' This is nothing MsgBox "Attachment Path " & attpath
+                        attname = myAtt.FileName ' Get the file name.
+                        strFile = strFolder & attname  ' Combine with the path to the Temp folder.
+                        If mySaveVar = 1 Then ' Save the attachment as a file.
+                            myAtt.SaveAsFile strFile
+                        End If
+                        myAttname = "Attachment Removed: " & strFile ' MsgBox myAttname
+                        Item.Body = myAttname + vbLf + Item.Body
+                        '                MsgBox "Removing attachment " & h & " of " & myAttachments.Count
+                        myAttachments.Remove (1)
+                        r = r + 1
+                        z = myAttachments.Count
+                Case Else
+                        q = q + 1
+                End Select
+              Next h
+             Item.Save
+            End If
+        Next
+  Else ' Keep Outlook Jpegs and Bmps
+        For Each Item In myFolder.Items
+            Set myAttachments = Item.Attachments
+            z = myAttachments.Count
+            If z > 0 Then
+            'MsgBox "Count = " & z
+              For h = 1 To z
+                Set myAtt = myAttachments.Item(1)
+                Select Case myAtt.Type
+                    Case Is <= 4 'not an Outlook item olByReference(4), olByValue(1), or olEmbeddedItem(5).
+                        attpath = myAtt.PathName
+                        attname = myAtt.FileName
+                        strFile = strFolder & attname
+                        attFname = GetFileNameOnly(attname)
+                     
+                     If attFname <> "Outlook" Then
+                        If mySaveVar = 1 Then ' Save the attachment as a file.
+                            myAtt.SaveAsFile strFile
+                        End If
+                        myAttname = "Attachment Removed: " & strFile ' MsgBox myAttname
+                        Item.Body = myAttname + vbLf + Item.Body
+                        'MsgBox "Removing attachment " & h & " of " & myAttachments.Count
+                        myAttachments.Remove (1)
+                        r = r + 1
+                        z = myAttachments.Count
+                     Else
+                        q = q + 1
+                     End If
+                    Case Else 'Do not remove Outlook inline images
+                        q = q + 1
+                End Select
+              Next h
+            Item.Save
+           End If
+        Next
+    End If
+PostDone:
+    MsgBox "Removed " & r & " attachments." & vbLf & "Unable to delete " & q & " attachments of " & ict & "."
+  End If
+
+End Sub
