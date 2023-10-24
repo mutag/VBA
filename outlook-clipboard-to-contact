@@ -1,0 +1,181 @@
+Sub GrabClipContact()
+
+Set myOLApp = CreateObject("Outlook.Application")
+Set myNameSpace = myOLApp.GetNamespace("MAPI")
+
+Dim myClipArray() As String
+Dim myData As DataObject
+Set myData = New DataObject
+
+'Dim myOffset As Integer
+Dim myText As String
+
+'On Error GoTo ErrHandler
+
+myData.GetFromClipboard
+If Not myData.GetFormat(1) Then
+    GoTo NotText
+End If
+
+z = Len(myData.GetText(1))
+'MsgBox ("Length of Clipboard " & z)
+'for debug
+myText = Trim(myData.GetText(1)) 'Trim leading and trailing spaces
+z = Len(myText)
+'MsgBox ("Length After Trim " & z)
+'for debug
+
+RmyText = Right(myText, 5) 'Check last 5 chars thats enough to see if they got a trailing CR
+For ai = 1 To 5
+ If Mid(RmyText, ai, 1) = Chr(13) Then 'Chr(13) is the linefeed
+    GoTo Rclear
+ End If
+Next
+noCR = MsgBox("You must grab the last Carriage Return for this Parser to work", vbCritical, "Grab Clip Contact")
+Exit Sub
+Rclear: 'Right side of text has been checked for trailing CR
+
+'Begin Parsing text looking for Carriage Returns
+'When CR is hit you probably have a field
+'So Grab left with count and display?
+
+ti = 0
+myOffset = 0
+
+For i = 1 To z
+strChar = Mid$(myText, i, 1) 'This grabs one char at a time and looks for the CR
+'MsgBox ("in test " & i)
+'debug
+
+    Select Case strChar
+        Case Chr(13), Chr(12) 'Check on other chars to test for
+'        MsgBox ("Char num= " & i & " is a CR see? " & strChar)
+           ti = ti + 1
+          If myOffset = 0 Then
+'            MsgBox ("Is this the first Field of Data? " & vbLf & Left(myText, i))
+            ReDim Preserve myClipArray(ti)
+            myClipArray(ti) = Left(myText, i)
+            myOffset = i + 2 'This should eat the CR char
+          Else
+            If i > myOffset Then
+                j = i - myOffset
+            ElseIf myOffset > i Then
+                    j = myOffset - i
+      
+            Else
+                j = 1
+            End If
+            
+            ReDim Preserve myClipArray(ti)
+            myClipArray(ti) = Mid(myText, myOffset, j)
+            myOffset = i + 2  'This should eat the CR char
+        
+          End If
+      
+    End Select
+   
+Next
+
+If myOffset = 0 Then
+    MsgBox ("No CRs were found in text: " & myText)
+    
+    If MsgBox("Is this the first Field of Data? " & vbLf & Left(myText, i)) = vbYes Then
+        ti = ti + 1
+        ReDim Preserve myClipArray(ti)
+        myClipArray(ti) = Left(myText, i)
+    End If
+
+End If
+
+'MsgBox (" Now we'll build myContact item")
+'Now we are out of the parse loop and can build our form
+' and reuse our counter vars
+
+Dim myContact As Outlook.ContactItem
+Set myContact = myOLApp.CreateItem(olContactItem)
+Dim myTbox As Control
+Dim myFields
+myFields = Array("Company Name", "Contact Name", "Email", "Bus. Phone Number (Edit to xxx-xxx-xxxx)", "Bus. Fax Number", "Bus. Address1", "Bus. Address2", "Bus. City,State Zip", "Website", "Other/Note")
+Const mybtnQ As Integer = 10 'Number of Contact Fields to match to clipboard
+Dim mybtns(mybtnQ)
+
+'Horizontal and vertical positioning constants
+x = 4
+y = 20
+Ty = 4
+
+For i = 1 To ti 'ti is the number of lines found in the Clipboard
+myCtrlName = "TextBox" & i
+Set myTbox = ClipForm1.Controls.Add("Forms.TextBox.1", myCtrlName, Visible)
+    With myTbox
+        .Left = x
+        .Top = Ty
+        .Width = 250
+        .Height = 20
+        .Visible = True
+        .Text = myClipArray(i) 'row of the contact data
+    End With 'yes i realize that i should have been able to create the form once and just change the text
+    ' there was probably a problem with doing it that way - can't remember 2003 very well
+
+For wi = 1 To mybtnQ
+    og = "btn" & wi
+  Set mybtns(wi) = ClipForm1.Controls.Add("Forms.OptionButton.1", og)
+    With mybtns(wi)
+        .Left = 20
+        .Top = y + 10
+        .Visible = True
+        .Width = 200
+        .Caption = myFields(wi)
+        .GroupName = "Fields"
+    End With
+    y = y + 20
+Next wi
+
+ClipForm1.Show 'present form to user and let them check which type of string this is name address etc
+    For xi = 1 To mybtnQ
+        If mybtns(xi).Value Then
+            Select Case xi
+                Case 1
+                    myContact.CompanyName = myTbox.Text
+                Case 2
+                    myContact.FullName = myTbox.Text
+                Case 3
+                    myContact.Email1Address = myTbox.Text
+                Case 4
+                    myContact.BusinessTelephoneNumber = myTbox.Text
+                Case 5
+                    myContact.BusinessFaxNumber = myTbox.Text
+                Case 6
+                    myContact.BusinessAddressStreet = myTbox.Text
+                Case 7
+                    myContact.BusinessAddressStreet = myContact.BusinessAddressStreet + vbLf & myTbox.Text
+                Case 8
+                    myContact.BusinessAddressCity = myTbox.Text
+                Case 9
+                    myContact.WebPage = myTbox.Text
+                Case 10
+                    myContact.Body = myContact.Body + myTbox.Text & vbLf
+            End Select
+        End If
+    Next xi
+
+y = 20
+
+Next
+
+myContact.MessageClass = "IPM.Contact.myClass"
+'this could be anything that you want just replace myClass
+myContact.Display
+MsgBox ("You will be prompted to Save or Discard this contact." & vbLf & "It will be saved in your default Contacts Folder.")
+myContact.Close (olPromptForSave)
+
+Exit Sub
+
+NotText:
+    MsgBox "Data on clipboard is not text. Select some text, right click and choose Copy."
+ErrHandler:
+    MsgBox ("Error in " & Err.Source)
+    MsgBox (Err.Description)
+    Resume Next
+
+End Sub
